@@ -92,6 +92,9 @@ function card(item,list){
  const receivedAt=item.created_at?new Date(item.created_at).toLocaleString('pt-BR'):'Data e hora não registradas';
  const receivedBy=item.received_by?.replace(/@usuarios\\.correios\\.invalid$/,'')||'Responsável não registrado';
  const last=history.filter(e=>e.action==='check').at(-1);
+ const stamp=e=>safe(new Date(e.created_at).toLocaleString('pt-BR'))+' · '+safe((e.actor_label||'Responsável não registrado').replace('@usuarios.correios.invalid',''));
+ const decision=history.filter(e=>e.action==='decide').at(-1);
+ const activity=(last?'<p><strong>Última conferência</strong><br>'+stamp(last)+'</p>':'')+(decision?'<p><strong>Destinação registrada</strong><br>'+stamp(decision)+'</p>':'');
  const label=unitName(item.unit_type);
  const delta=item.checked_quantity===null?null:item.checked_quantity-item.expected_quantity;
  const countLabel=n=>Math.abs(n)===1?(item.unit_type==='box'?'caixa':'peça'):label;
@@ -104,7 +107,7 @@ function card(item,list){
  if(page==='decide'&&can(list.unit_id,'approver')&&item.state==='pending_approval'){
   controls='<form data-action="decide" data-id="'+safe(item.id)+'"><label>Destinação<select name="destination">'+options(Object.entries(destinations))+'</select></label><label class="region" hidden>Região<select name="location"></select></label><label>Motivo da decisão<textarea name="note" required></textarea></label><div class="decision-actions"><button value="decide">Confirmar destinação</button><button value="reopen" class="decision-secondary">Pedir nova conferência</button></div></form>';
  }
- return '<article><small>'+safe(list.external_reference)+' · '+safe(nameFor(list.unit_id))+'</small><h2>'+safe(item.received_code)+'</h2>'+(page==='check'?'<p class="item-meta"><small>'+safe(receivedAt)+' · '+safe(receivedBy)+'</small></p>':'')+'<p><strong class="status status-'+safe(item.state)+'">'+safe(stateNames[item.state])+'</strong></p>'+quantities+''+(last?.details.note?'<p>'+safe(last.details.note)+'</p>':'')+(item.destination?'<p>'+safe(destinations[item.destination])+'</p>':'')+controls+'<details><summary>Histórico</summary><ul>'+history.map(e=>'<li>'+safe(new Date(e.created_at).toLocaleString('pt-BR'))+' · '+safe(stateNames[e.after_state])+(e.details.note?' · '+safe(e.details.note):'')+'</li>').join('')+'</ul></details>'+(page==='decide'?'<button type="button" class="secondary" data-open="'+safe(list.id)+'">Abrir lista de origem</button>':'')+'</article>';
+ return '<article><small>'+safe(list.external_reference)+' · '+safe(nameFor(list.unit_id))+'</small><h2>'+safe(item.received_code)+'</h2>'+(page==='check'?'<p class="item-meta"><small>'+safe(receivedAt)+' · '+safe(receivedBy)+'</small></p>':'')+'<p><strong class="status status-'+safe(item.state)+'">'+safe(stateNames[item.state])+'</strong></p>'+quantities+activity+(last?.details.note?'<p>'+safe(last.details.note)+'</p>':'')+(item.destination?'<p>'+safe(destinations[item.destination])+'</p>':'')+controls+'<details><summary>Histórico</summary><ul>'+history.map(e=>'<li>'+stamp(e)+' · '+safe(stateNames[e.after_state])+(e.details.note?' · '+safe(e.details.note):'')+'</li>').join('')+'</ul></details>'+(page==='decide'?'<button type="button" class="secondary" data-open="'+safe(list.id)+'">Abrir lista de origem</button>':'')+'</article>';
 }
 function listProgress(){
  const progress=new Map();
