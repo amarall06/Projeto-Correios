@@ -139,7 +139,7 @@ function listSummary(id,{check=0,approval=0,destined=0}={}){
  return '<div class="list-summary">'+[['check','Faltam conferir',check],['pending_approval','Aguardam aprovação',approval],['destined','Destinados',destined]].map(([status,label,count])=>'<button type="button" data-open="'+safe(id)+'" data-status="'+status+'"><span>'+label+'</span><strong>'+count+'</strong></button>').join('')+'</div>';
 }
 let openItem='';
-function conferenceItem(item,list){
+function expandableItem(item,list){
  return '<details class="conference-item"'+(openItem===item.id?' open':'')+'><summary><strong>'+safe(item.received_code)+'</strong><span class="conference-more"><span class="when-closed">Ver detalhes</span><span class="when-open">Fechar</span></span></summary>'+card(item,list)+'</details>';
 }
 function render(){
@@ -164,7 +164,7 @@ function render(){
   else{
    const visible=items.filter(i=>i.list_id===list.id&&(!checkOnly||['received','checking'].includes(i.state))).sort((a,b)=>String(b.created_at??'').localeCompare(String(a.created_at??''))||b.line_number-a.line_number);
    const shown=showAllItems?visible:visible.slice(0,3);
-   content='<h2>'+safe(list.external_reference)+'</h2>'+(checkOnly?'<p>Faltam conferir</p><button type="button" class="secondary" data-open="'+safe(list.id)+'">Ver todos os itens</button>':'')+(shown.map(i=>conferenceItem(i,list)).join('')||'<p class="empty">Nenhum item nesta seleção.</p>')+(shown.length?'<details class="conference-sheet"><summary>Ver ficha de itens</summary>'+printedList(shown)+'</details>':'');
+   content='<h2>'+safe(list.external_reference)+'</h2>'+(checkOnly?'<p>Faltam conferir</p><button type="button" class="secondary" data-open="'+safe(list.id)+'">Ver todos os itens</button>':'')+(shown.map(i=>expandableItem(i,list)).join('')||'<p class="empty">Nenhum item nesta seleção.</p>')+(shown.length?'<details class="conference-sheet"><summary>Ver ficha de itens</summary>'+printedList(shown)+'</details>':'');
    if(visible.length>3)content+='<div class="list-more"><button type="button" class="secondary" data-toggle-items aria-expanded="'+showAllItems+'">'+(showAllItems?'Mostrar recentes':'Ver todos os itens ('+visible.length+')')+'</button></div>';
    if(can(list.unit_id,'operator'))content='<details class="new-list-top"><summary>Adicionar item</summary>'+'<form data-action="item"><label>Código recebido<input name="code" required></label><label>Quantidade na lista<input name="quantity" type="number" min="1" step="1" required></label><label>Unidade<select name="unit"><option value="box">Caixas</option><option value="piece">Peças</option></select></label><label>Localização<input name="location" maxlength="100"></label><label>Obs<textarea name="receivedNote" maxlength="500"></textarea></label><button>Adicionar</button></form>'+'</details>'+content;
   }
@@ -174,7 +174,7 @@ function render(){
    return list&&(!listScope||list.id===listScope)&&item.state===queueState&&(!queueUnit||list.unit_id===queueUnit)?[{item,list}]:[];
   });
   const scoped=lists.find(l=>l.id===listScope);
-  content=(scoped?'<h2>'+safe(scoped.external_reference)+'</h2><button type="button" class="secondary" data-page="decide">Ver todas as listas</button>':'')+'<div class="queue-filters"><label>Unidade<select data-filter="unit">'+options([['','Todas as unidades'],...units.map(u=>[u.id,u.name])])+'</select></label><label>Situação<select data-filter="state">'+options([['pending_approval','Aguardando aprovação'],['destined','Destinados']])+'</select></label><p role="status">'+visible.length+(visible.length===1?' item':' itens')+'</p></div>'+(visible.map(({item,list})=>card(item,list)).join('')||'<p class="empty">Nenhum item para os filtros selecionados.</p>');
+  content=(scoped?'<h2>'+safe(scoped.external_reference)+'</h2><button type="button" class="secondary" data-page="decide">Ver todas as listas</button>':'')+'<div class="queue-filters"><label>Unidade<select data-filter="unit">'+options([['','Todas as unidades'],...units.map(u=>[u.id,u.name])])+'</select></label><label>Situação<select data-filter="state">'+options([['pending_approval','Aguardando aprovação'],['destined','Destinados']])+'</select></label><p role="status">'+visible.length+(visible.length===1?' item':' itens')+'</p></div>'+(visible.map(({item,list})=>expandableItem(item,list)).join('')||'<p class="empty">Nenhum item para os filtros selecionados.</p>');
  }
  app.innerHTML='<div class="account"><details class="profile"><summary aria-label="Menu de usuário" title="Menu de usuário"><svg aria-hidden="true" width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><circle cx="12" cy="8" r="3"/><path d="M5 21v-2a7 7 0 0 1 14 0v2"/></svg></summary><div class="profile-panel"><strong>'+safe(session.user.email.replace(/@usuarios\.correios\.invalid$/,''))+'</strong><small>'+safe(units.map(u=>u.name+' ('+(roleLabels[roleFor(u.id)]||'sem papel ativo')+')').join(', ')||'Sem unidade atribuída')+'</small>'+(teamManager?'<button data-page="team">Equipe</button>':'')+'<button data-page="logout">Sair</button></div></details></div><nav aria-label="Etapas"><button data-page="lists">Listas</button><button data-page="check">Conferência</button><button data-page="decide">Destinação</button></nav><section class="workspace"><h1 class="screen-title">'+({lists:'Listas',check:'Conferência',decide:'Destinação',team:'Equipe'})[page]+'</h1>'+content+'</section>';
  app.querySelector('button[data-page='+page+']')?.setAttribute('aria-current','page');
@@ -193,7 +193,7 @@ app.addEventListener('click',e=>{
   if(status==='pending_approval'||status==='destined'){listScope=open;queueUnit='';queueState=status;page='decide'}
   else page='check';
   render();
- }else if(next){checkOnly=false;listScope='';page=next;render()}
+ }else if(next){openItem='';checkOnly=false;listScope='';page=next;render()}
 });
 app.addEventListener('change',async e=>{
  const filter=e.target.dataset.filter;
@@ -262,7 +262,7 @@ app.addEventListener('submit',async e=>{
    data.p_request=f.dataset.request;
    await api('/rest/v1/rpc/correios_apply_action',{method:'POST',data});
   }
-  if(page==='check')openItem=f.dataset.id||'';
+  if(page==='check'||page==='decide')openItem=f.dataset.id||'';
   await load();
   notice.textContent='Registro salvo.';
  }catch(error){notice.textContent=error.message;}
