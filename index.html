@@ -129,6 +129,10 @@ function card(item,list){
  if(page==='decide'&&awaitingStorage(item)&&roleFor(list.unit_id)){
   controls+='<form data-action="store" data-id="'+safe(item.id)+'"><label>Onde a peça foi guardada?<input name="storedLocation" maxlength="100" value="'+safe(item.planned_location)+'" required></label>'+(item.destination==='warranty'?'<label>Fabricante<input name="manufacturer" maxlength="100" required></label>':'')+'<button>Confirmar que foi guardada</button></form>';
  }
+ if(list.released&&!list.closed_at&&roleFor(list.unit_id)){
+  if(item.pending_note)controls+='<p class="empty"><strong>Pendência aberta</strong><br>'+safe(item.pending_note)+'</p>';
+  if(!item.pending_note||can(list.unit_id,'approver'))controls+='<details><summary>'+(item.pending_note?'Resolver pendência':'Registrar pendência')+'</summary><form data-action="issue" data-id="'+safe(item.id)+'" data-resolve="'+Boolean(item.pending_note)+'"><label>'+(item.pending_note?'Como foi resolvida?':'O que impede a conclusão?')+'<textarea name="note" maxlength="500" required></textarea></label><button>Salvar</button></form></details>';
+ }
  return '<article><small>'+safe(list.external_reference)+' · '+safe(nameFor(list.unit_id))+'</small><h2>'+safe(item.received_code)+'</h2>'+(item.order_number?'<p>Pedido '+safe(item.order_number)+'</p>':'')+(page==='check'?'<p class="item-meta"><small>'+safe(receivedAt)+' · '+safe(receivedBy)+'</small></p>':'')+'<p><strong class="status status-'+safe(item.state)+'">'+safe(stateNames[item.state])+'</strong></p>'+quantities+activity+(last?.details.note?'<p>'+safe(last.details.note)+'</p>':'')+(item.destination?'<p>'+safe(destinations[item.destination])+'</p>':'') +storage+warrantyPickup+(list.closed_at?'':controls)+'<details><summary>Histórico</summary><ul>'+history.map(e=>'<li>'+stamp(e)+' · '+safe(stateNames[e.after_state])+(e.details.note?' · '+safe(e.details.note):'')+'</li>').join('')+'</ul></details>'+(page==='decide'?'<button type="button" class="secondary" data-open="'+safe(list.id)+'">Abrir lista de origem</button>':'')+'</article>';
 }
 function listProgress(){
@@ -207,7 +211,7 @@ function render(){
    content='<h2>'+safe(list.external_reference)+'</h2>'+(checkOnly?'<p>Faltam conferir</p><button type="button" class="secondary" data-open="'+safe(list.id)+'">Ver todos os itens</button>':'')+(shown.map(i=>expandableItem(i,list)).join('')||'<p class="empty">Nenhum item nesta seleção.</p>')+(shown.length?'<details class="conference-sheet"><summary>Ver ficha de itens</summary>'+printedList(shown)+'</details>':'');
    if(visible.length>3)content+='<div class="list-more"><button type="button" class="secondary" data-toggle-items aria-expanded="'+showAllItems+'">'+(showAllItems?'Mostrar recentes':'Ver todos os itens ('+visible.length+')')+'</button></div>';
    if(list.closed_at)content='<p class="empty">Lista encerrada em '+safe(new Date(list.closed_at).toLocaleString('pt-BR'))+' · '+safe((list.closed_by||'').replace('@usuarios.correios.invalid',''))+'</p>'+content;
-   if(list.released&&!list.closed_at&&can(list.unit_id,'approver')&&items.some(i=>i.list_id===list.id)&&items.filter(i=>i.list_id===list.id).every(i=>i.state==='destined'&&!awaitingStorage(i))){
+   if(list.released&&!list.closed_at&&can(list.unit_id,'approver')&&items.some(i=>i.list_id===list.id)&&items.filter(i=>i.list_id===list.id).every(i=>i.state==='destined'&&!awaitingStorage(i)&&!i.pending_note)){
     content+='<form data-action="close-list"><p>Todos os itens foram tratados. Após encerrar, a lista fica disponível para consulta.</p><button>Encerrar lista</button></form>';
    }
    if(!list.released)content='<form data-action="release"><p>Rascunho. Confira os itens antes de liberar para a equipe.</p><button '+(visible.length?'':'disabled')+'>Liberar lista</button></form>'+content;
@@ -346,6 +350,8 @@ app.addEventListener('submit',async e=>{
   }else if(action==='revise'){
    await api('/rest/v1/rpc/correios_revise_destination',{method:'POST',data:{p_item:f.dataset.id,p_destination:value('destination'),p_region:value('location')||null,p_location:value('plannedLocation')||null,p_note:value('note')}});
    queueState=['stock_referral','warranty'].includes(value('destination'))?'awaiting_storage':'destined';
+  }else if(action==='issue'){
+   await api('/rest/v1/rpc/correios_item_issue',{method:'POST',data:{p_item:f.dataset.id,p_note:value('note'),p_resolve:f.dataset.resolve==='true'}});
   }else if(action==='withdraw'){
    await api('/rest/v1/rpc/correios_withdraw_warranty',{method:'POST',data:{p_item:f.dataset.id,p_receiver:value('receiver')}});
   }else if(action==='store'){
