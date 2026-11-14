@@ -103,6 +103,7 @@ function card(item,list){
  const receivedBy=item.received_by?.replace(/@usuarios\\.correios\\.invalid$/,'')||'Responsável não registrado';
  const last=history.filter(e=>e.action==='check').at(-1);
  const stamp=e=>safe(new Date(e.created_at).toLocaleString('pt-BR'))+' · '+safe((e.actor_label||'Responsável não registrado').replace('@usuarios.correios.invalid',''));
+ const storage=item.stored_at?'<p><strong>Peça guardada</strong><br>'+safe(item.stored_location)+' · '+safe(new Date(item.stored_at).toLocaleString('pt-BR'))+' · '+safe((item.stored_by||'').replace('@usuarios.correios.invalid',''))+'</p>':'';
  const decision=history.filter(e=>e.action==='decide').at(-1);
  const activity=(last?'<p><strong>Última conferência</strong><br>'+stamp(last)+'</p>':'')+(decision?'<p><strong>Destinação registrada</strong><br>'+stamp(decision)+'</p>':'');
  const label=unitName(item.unit_type);
@@ -117,7 +118,10 @@ function card(item,list){
  if(page==='decide'&&can(list.unit_id,'approver')&&item.state==='pending_approval'){
   controls='<form data-action="decide" data-id="'+safe(item.id)+'"><label>Destinação<select name="destination">'+options(Object.entries(destinations))+'</select></label><label class="region" hidden>Região<select name="location"></select></label><label>Motivo da decisão<textarea name="note" required></textarea></label><div class="decision-actions"><button value="decide">Confirmar destinação</button><button value="reopen" class="decision-secondary">Pedir nova conferência</button></div></form>';
  }
- return '<article><small>'+safe(list.external_reference)+' · '+safe(nameFor(list.unit_id))+'</small><h2>'+safe(item.received_code)+'</h2>'+(item.order_number?'<p>Pedido '+safe(item.order_number)+'</p>':'')+(page==='check'?'<p class="item-meta"><small>'+safe(receivedAt)+' · '+safe(receivedBy)+'</small></p>':'')+'<p><strong class="status status-'+safe(item.state)+'">'+safe(stateNames[item.state])+'</strong></p>'+quantities+activity+(last?.details.note?'<p>'+safe(last.details.note)+'</p>':'')+(item.destination?'<p>'+safe(destinations[item.destination])+'</p>':'')+controls+'<details><summary>Histórico</summary><ul>'+history.map(e=>'<li>'+stamp(e)+' · '+safe(stateNames[e.after_state])+(e.details.note?' · '+safe(e.details.note):'')+'</li>').join('')+'</ul></details>'+(page==='decide'?'<button type="button" class="secondary" data-open="'+safe(list.id)+'">Abrir lista de origem</button>':'')+'</article>';
+ if(page==='decide'&&item.state==='destined'&&!item.stored_at&&['stock_referral','warranty'].includes(item.destination)&&roleFor(list.unit_id)){
+  controls+='<form data-action="store" data-id="'+safe(item.id)+'"><label>Onde a peça foi guardada?<input name="storedLocation" maxlength="100" required></label><button>Confirmar que foi guardada</button></form>';
+ }
+ return '<article><small>'+safe(list.external_reference)+' · '+safe(nameFor(list.unit_id))+'</small><h2>'+safe(item.received_code)+'</h2>'+(item.order_number?'<p>Pedido '+safe(item.order_number)+'</p>':'')+(page==='check'?'<p class="item-meta"><small>'+safe(receivedAt)+' · '+safe(receivedBy)+'</small></p>':'')+'<p><strong class="status status-'+safe(item.state)+'">'+safe(stateNames[item.state])+'</strong></p>'+quantities+activity+(last?.details.note?'<p>'+safe(last.details.note)+'</p>':'')+(item.destination?'<p>'+safe(destinations[item.destination])+'</p>':'')+storage+controls+'<details><summary>Histórico</summary><ul>'+history.map(e=>'<li>'+stamp(e)+' · '+safe(stateNames[e.after_state])+(e.details.note?' · '+safe(e.details.note):'')+'</li>').join('')+'</ul></details>'+(page==='decide'?'<button type="button" class="secondary" data-open="'+safe(list.id)+'">Abrir lista de origem</button>':'')+'</article>';
 }
 function listProgress(){
  const progress=new Map();
@@ -204,7 +208,7 @@ function render(){
    return matches&&list&&(!listScope||list.id===listScope)&&item.state===queueState&&(!queueUnit||list.unit_id===queueUnit)?[{item,list}]:[];
   });
   const scoped=lists.find(l=>l.id===listScope);
-  content=(scoped?'<h2>'+safe(scoped.external_reference)+'</h2><button type="button" class="secondary" data-page="decide">Ver todas as listas</button>':'')+'<div class="queue-filters"><label>Buscar peça ou pedido<input type="search" data-filter="search" value="'+safe(queueSearch)+'" placeholder="Digite o código ou pedido"></label><label>Unidade<select data-filter="unit">'+options([['','Todas as unidades'],...units.map(u=>[u.id,u.name])])+'</select></label><label>Situação<select data-filter="state">'+options([['pending_approval','Aguardando aprovação'],['destined','Destinados']])+'</select></label><p role="status">'+visible.length+(visible.length===1?' item':' itens')+'</p></div>'+(visible.map(({item,list})=>expandableItem(item,list)).join('')||'<p class="empty">Nenhum item para os filtros selecionados.</p>');
+  content=(scoped?'<h2>'+safe(scoped.external_reference)+'</h2><button type="button" class="secondary" data-page="decide">Ver todas as listas</button>':'')+'<div class="queue-filters"><label>Buscar peça ou pedido<input type="search" data-filter="search" value="'+safe(queueSearch)+'" placeholder="Digite ou bipe o código ou pedido"></label><label>Unidade<select data-filter="unit">'+options([['','Todas as unidades'],...units.map(u=>[u.id,u.name])])+'</select></label><label>Situação<select data-filter="state">'+options([['pending_approval','Aguardando aprovação'],['destined','Destinados']])+'</select></label><p role="status">'+visible.length+(visible.length===1?' item':' itens')+'</p></div>'+(visible.map(({item,list})=>expandableItem(item,list)).join('')||'<p class="empty">Nenhum item para os filtros selecionados.</p>');
  }
  app.innerHTML='<div class="account"><details class="profile"><summary aria-label="Menu de usuário" title="Menu de usuário"><svg aria-hidden="true" width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><circle cx="12" cy="8" r="3"/><path d="M5 21v-2a7 7 0 0 1 14 0v2"/></svg></summary><div class="profile-panel"><strong>'+safe(session.user.email.replace(/@usuarios\.correios\.invalid$/,''))+'</strong><small>'+safe(units.map(u=>u.name+' ('+(roleLabels[roleFor(u.id)]||'sem papel ativo')+')').join(', ')||'Sem unidade atribuída')+'</small>'+(teamManager?'<button data-page="team">Equipe</button>':'')+'<button type="button" id="install-app"'+(installPrompt?'':' hidden')+'><svg aria-hidden="true" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 3v12m-5-5 5 5 5-5M4 16v4h16v-4"/></svg> Instalar Liber Correios</button><button data-page="logout">Sair</button></div></details></div><nav aria-label="Etapas"><button data-page="lists">Listas</button><button data-page="check">Conferência</button><button data-page="decide">Destinação</button></nav><section class="workspace"><h1 class="screen-title">'+({lists:'Listas',check:'Conferência',decide:'Destinação',team:'Equipe'})[page]+'</h1>'+content+'</section>';
  app.querySelector('button[data-page='+page+']')?.setAttribute('aria-current','page');
@@ -224,6 +228,14 @@ app.addEventListener('click',e=>{
   else page='check';
   render();
  }else if(next){openItem='';checkOnly=false;listScope='';page=next;render()}
+});
+app.addEventListener('keydown',e=>{
+ if(e.target.dataset.filter!=='search'||e.key!=='Enter')return;
+ e.preventDefault();
+ queueSearch=e.target.value.trim();
+ render();
+ const search=app.querySelector('[data-filter=search]');
+ search?.focus();search?.select();
 });
 app.addEventListener('change',async e=>{
  const filter=e.target.dataset.filter;
@@ -285,6 +297,8 @@ app.addEventListener('submit',async e=>{
    if(f.elements.importFile.files.length&&!f.dataset.rows)throw Error('Corrija o arquivo antes de salvar.');
    selected=await api('/rest/v1/rpc/correios_import_list',{method:'POST',data:{p_unit:value('unit'),p_source:value('source'),p_reference:value('reference'),p_date:value('date'),p_kind:value('kind'),p_rows:JSON.parse(f.dataset.rows||'[]')}});
    checkOnly=false;page='check';
+  }else if(action==='store'){
+   await api('/rest/v1/rpc/correios_confirm_storage',{method:'POST',data:{p_item:f.dataset.id,p_location:value('storedLocation')}});
   }else if(action==='release'){
    await api('/rest/v1/correios_lists?id=eq.'+encodeURIComponent(selected),{method:'PATCH',data:{released:true}});
   }else if(action==='item'){
