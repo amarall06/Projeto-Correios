@@ -3,7 +3,7 @@
 <link rel="manifest" href="./manifest.webmanifest"><link rel="apple-touch-icon" href="./icon-192.png"><meta name="theme-color" content="#132d4b"><title>Correios · Destinação</title>
 <style>
 *{box-sizing:border-box}body{margin:0;background:#f2f5f8;color:#132d4b;font:16px system-ui}header{background:#132d4b;color:white;padding:20px 6%;font-weight:700;font-size:22px;border-bottom:4px solid #f2c94c}main{max-width:940px;margin:auto;padding:24px}section,article,form{background:white;border:1px solid #dce4ed;border-radius:12px;padding:18px;margin:12px 0}label{display:grid;gap:5px;margin:8px 0}input,button,select,textarea{font:inherit;padding:10px;border:1px solid #9aacc0;border-radius:7px;max-width:100%}button{background:#193c60;color:white;cursor:pointer;min-height:44px}button:disabled{opacity:.55}nav{display:flex;flex-wrap:wrap;gap:8px}small{color:#465970}#notice{white-space:pre-wrap;color:#78350f}h2{margin-top:0}summary{cursor:pointer}textarea{min-height:70px}nav button[aria-current=page]{background:#f2c94c;color:#132d4b}button:focus-visible,input:focus-visible,select:focus-visible,textarea:focus-visible{outline:3px solid #976e00;outline-offset:3px}@media(max-width:540px){main{padding:14px}section,article,form{padding:14px}nav button{flex:1}input,select,textarea{width:100%}}
-</style>
+body{font-family:Inter,system-ui,sans-serif;background:#f4f6fa}header{padding:24px max(20px,calc((100% - 890px)/2));font-size:20px}main{padding:24px 18px}nav{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));background:#e8edf4;padding:5px;border-radius:14px;margin-bottom:24px;gap:4px}nav button{background:transparent;color:#234364;border:0;padding:8px 3px;font-size:14px;font-weight:650}nav button[aria-current=page]{background:#fff;color:#132d4b;box-shadow:0 1px 5px #132d4b24;border-bottom:3px solid #f2c94c}.account{display:flex;align-items:center;justify-content:space-between;gap:12px;margin:0 0 20px;overflow-wrap:anywhere}.account small{display:block;margin-top:4px}.account button{background:white;color:#234364;flex-shrink:0}.screen-title{font-size:30px;letter-spacing:-.04em;margin:0 0 14px}.empty{padding:24px 18px;background:white;border:1px dashed #aebed0;border-radius:14px;color:#465970}article,form{box-shadow:0 2px 8px #132d4b08}article form{box-shadow:none;background:#f7f9fc}#notice:empty{display:none}</style>
 <header>Correios · Destinação</header>
 <main><div id="notice" role="status"></div><div id="app"></div></main>
 <script type="module">
@@ -69,7 +69,7 @@ function render(){
  const own=units.filter(u=>can(u.id,'operator'));
  let content='';
  if(page==='lists'){
-  content=lists.map(l=>'<article><small>'+safe(nameFor(l.unit_id))+'</small><h2>'+safe(l.external_reference)+'</h2><p>'+safe(l.source)+'</p><button data-open="'+safe(l.id)+'">Abrir conferência</button></article>').join('')||'<p>Nenhuma lista visível nesta conta.</p>';
+  content=lists.map(l=>'<article><small>'+safe(nameFor(l.unit_id))+'</small><h2>'+safe(l.external_reference)+'</h2><p>'+safe(l.source)+'</p><button data-open="'+safe(l.id)+'">Abrir conferência</button></article>').join('')||'<p class="empty">'+(units.length?(own.length?'Crie a primeira lista no formulário abaixo.':'As listas da sua unidade aparecem aqui assim que forem registradas.'):'Sua conta está conectada. Peça ao responsável para vincular você a uma unidade do Correios.')+'</p>';
   if(own.length)content+='<form data-action="list"><h2>Nova lista</h2><label>Unidade<select name="unit">'+options(own.map(u=>[u.id,u.name]))+'</select></label><label>Origem<input name="source" required></label><label>Referência<input name="reference" required></label><button>Criar lista</button></form>';
  }else if(page==='check'){
   if(!list)content='<p>Escolha uma lista para conferir.</p>';
@@ -80,7 +80,7 @@ function render(){
  }else{
   content=items.filter(i=>['pending_approval','destined'].includes(i.state)).map(i=>{const l=lists.find(x=>x.id===i.list_id);return l?card(i,l):''}).join('')||'<p>Nenhum item aguardando decisão ou destinado.</p>';
  }
- app.innerHTML='<p>'+safe(session.user.email)+' · '+safe(units.map(u=>u.name+' ('+(roleLabels[roleFor(u.id)]||'sem papel ativo')+')').join(', '))+'</p><nav aria-label="Etapas"><button data-page="lists">Listas</button><button data-page="check">Conferência</button><button data-page="decide">Destinação</button><button data-page="logout">Sair</button></nav>'+content;
+ app.innerHTML='<div class="account"><div>'+safe(session.user.email)+'<small>'+safe(units.map(u=>u.name+' ('+(roleLabels[roleFor(u.id)]||'sem papel ativo')+')').join(', ')||'Sem unidade vinculada')+'</small></div><button data-page="logout">Sair</button></div><nav aria-label="Etapas"><button data-page="lists">Listas</button><button data-page="check">Conferência</button><button data-page="decide">Destinação</button></nav><h1 class="screen-title">'+({lists:'Listas',check:'Conferência',decide:'Destinação'})[page]+'</h1>'+content;
  app.querySelector('button[data-page='+page+']')?.setAttribute('aria-current','page');
 }
 app.addEventListener('click',e=>{
