@@ -106,6 +106,9 @@ function card(item,list){
  const receivedBy=item.received_by?.replace(/@usuarios\\.correios\\.invalid$/,'')||'Responsável não registrado';
  const last=history.filter(e=>e.action==='check').at(-1);
  const stamp=e=>safe(new Date(e.created_at).toLocaleString('pt-BR'))+' · '+safe((e.actor_label||'Responsável não registrado').replace('@usuarios.correios.invalid',''));
+ const withdrawal=history.find(e=>e.action==='withdraw_warranty');
+ const warrantyPickup=withdrawal?'<p><strong>'+safe(withdrawal.details.note)+'</strong><br>'+stamp(withdrawal)+'</p>':
+  page==='decide'&&item.destination==='warranty'&&item.stored_at&&can(list.unit_id,'approver')?'<form data-action="withdraw" data-id="'+safe(item.id)+'"><label>Quem retirou a peça?<input name="receiver" required maxlength="100"></label><button>Registrar retirada de garantia</button></form>':'';
  const storage=item.stored_at?'<p><strong>Peça guardada</strong><br>'+safe(item.stored_location)+(item.warranty_manufacturer?' · '+safe(item.warranty_manufacturer):'')+' · '+safe(new Date(item.stored_at).toLocaleString('pt-BR'))+' · '+safe((item.stored_by||'').replace('@usuarios.correios.invalid',''))+'</p>':'';
  const decision=history.filter(e=>['decide','revise_destination'].includes(e.action)).at(-1);
  const activity=(last?'<p><strong>Última conferência</strong><br>'+stamp(last)+'</p>':'')+(decision?'<p><strong>Destinação registrada</strong><br>'+stamp(decision)+'</p>':'');
@@ -126,7 +129,7 @@ function card(item,list){
  if(page==='decide'&&awaitingStorage(item)&&roleFor(list.unit_id)){
   controls+='<form data-action="store" data-id="'+safe(item.id)+'"><label>Onde a peça foi guardada?<input name="storedLocation" maxlength="100" value="'+safe(item.planned_location)+'" required></label>'+(item.destination==='warranty'?'<label>Fabricante<input name="manufacturer" maxlength="100" required></label>':'')+'<button>Confirmar que foi guardada</button></form>';
  }
- return '<article><small>'+safe(list.external_reference)+' · '+safe(nameFor(list.unit_id))+'</small><h2>'+safe(item.received_code)+'</h2>'+(item.order_number?'<p>Pedido '+safe(item.order_number)+'</p>':'')+(page==='check'?'<p class="item-meta"><small>'+safe(receivedAt)+' · '+safe(receivedBy)+'</small></p>':'')+'<p><strong class="status status-'+safe(item.state)+'">'+safe(stateNames[item.state])+'</strong></p>'+quantities+activity+(last?.details.note?'<p>'+safe(last.details.note)+'</p>':'')+(item.destination?'<p>'+safe(destinations[item.destination])+'</p>':'') +storage+(list.closed_at?'':controls)+'<details><summary>Histórico</summary><ul>'+history.map(e=>'<li>'+stamp(e)+' · '+safe(stateNames[e.after_state])+(e.details.note?' · '+safe(e.details.note):'')+'</li>').join('')+'</ul></details>'+(page==='decide'?'<button type="button" class="secondary" data-open="'+safe(list.id)+'">Abrir lista de origem</button>':'')+'</article>';
+ return '<article><small>'+safe(list.external_reference)+' · '+safe(nameFor(list.unit_id))+'</small><h2>'+safe(item.received_code)+'</h2>'+(item.order_number?'<p>Pedido '+safe(item.order_number)+'</p>':'')+(page==='check'?'<p class="item-meta"><small>'+safe(receivedAt)+' · '+safe(receivedBy)+'</small></p>':'')+'<p><strong class="status status-'+safe(item.state)+'">'+safe(stateNames[item.state])+'</strong></p>'+quantities+activity+(last?.details.note?'<p>'+safe(last.details.note)+'</p>':'')+(item.destination?'<p>'+safe(destinations[item.destination])+'</p>':'') +storage+warrantyPickup+(list.closed_at?'':controls)+'<details><summary>Histórico</summary><ul>'+history.map(e=>'<li>'+stamp(e)+' · '+safe(stateNames[e.after_state])+(e.details.note?' · '+safe(e.details.note):'')+'</li>').join('')+'</ul></details>'+(page==='decide'?'<button type="button" class="secondary" data-open="'+safe(list.id)+'">Abrir lista de origem</button>':'')+'</article>';
 }
 function listProgress(){
  const progress=new Map();
@@ -354,6 +357,8 @@ app.addEventListener('submit',async e=>{
   }else if(action==='revise'){
    await api('/rest/v1/rpc/correios_revise_destination',{method:'POST',data:{p_item:f.dataset.id,p_destination:value('destination'),p_region:value('location')||null,p_location:value('plannedLocation')||null,p_note:value('note')}});
    queueState=['stock_referral','warranty'].includes(value('destination'))?'awaiting_storage':'destined';
+  }else if(action==='withdraw'){
+   await api('/rest/v1/rpc/correios_withdraw_warranty',{method:'POST',data:{p_item:f.dataset.id,p_receiver:value('receiver')}});
   }else if(action==='store'){
    await api('/rest/v1/rpc/correios_store_with_manufacturer',{method:'POST',data:{p_item:f.dataset.id,p_location:value('storedLocation'),p_manufacturer:value('manufacturer')||null}});
    queueState='destined';
