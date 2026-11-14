@@ -162,7 +162,7 @@ function render(){
    const shown=showAllItems?visible:visible.slice(0,3);
    content='<h2>'+safe(list.external_reference)+'</h2>'+(checkOnly?'<p>Faltam conferir</p><button type="button" class="secondary" data-open="'+safe(list.id)+'">Ver todos os itens</button>':'')+(shown.length?printedList(shown):'')+(shown.map(i=>card(i,list)).join('')||'<p class="empty">Nenhum item nesta seleção.</p>');
    if(visible.length>3)content+='<div class="list-more"><button type="button" class="secondary" data-toggle-items aria-expanded="'+showAllItems+'">'+(showAllItems?'Mostrar recentes':'Ver todos os itens ('+visible.length+')')+'</button></div>';
-   if(can(list.unit_id,'operator'))content='<details class="new-list-top"><summary>Adicionar item</summary>'+'<form data-action="item"><label>Nº do item na lista<input name="line" type="number" min="1" step="1" required></label><label>Código recebido<input name="code" required></label><label>Quantidade na lista<input name="quantity" type="number" min="1" step="1" required></label><label>Unidade<select name="unit"><option value="box">Caixas</option><option value="piece">Peças</option></select></label><label>Localização<input name="location" maxlength="100"></label><label>Obs<textarea name="receivedNote" maxlength="500"></textarea></label><button>Adicionar</button></form>'+'</details>'+content;
+   if(can(list.unit_id,'operator'))content='<details class="new-list-top"><summary>Adicionar item</summary>'+'<form data-action="item"><label>Código recebido<input name="code" required></label><label>Quantidade na lista<input name="quantity" type="number" min="1" step="1" required></label><label>Unidade<select name="unit"><option value="box">Caixas</option><option value="piece">Peças</option></select></label><label>Localização<input name="location" maxlength="100"></label><label>Obs<textarea name="receivedNote" maxlength="500"></textarea></label><button>Adicionar</button></form>'+'</details>'+content;
   }
  }else{
   const visible=items.flatMap(item=>{
@@ -239,7 +239,7 @@ app.addEventListener('submit',async e=>{
    const rows=await api('/rest/v1/correios_lists',{method:'POST',representation:true,data:{unit_id:value('unit'),source:value('source'),external_reference:value('reference')}});
    selected=rows[0].id;page='check';
   }else if(action==='item'){
-   await api('/rest/v1/correios_items',{method:'POST',data:{list_id:selected,line_number:Number(value('line')),received_code:value('code').toUpperCase(),expected_quantity:Number(value('quantity')),unit_type:value('unit'),received_location:value('location')||null,received_note:value('receivedNote')||null}});
+   await api('/rest/v1/correios_items',{method:'POST',data:{list_id:selected,received_code:value('code').toUpperCase(),expected_quantity:Number(value('quantity')),unit_type:value('unit'),received_location:value('location')||null,received_note:value('receivedNote')||null}});
   }else{
    const op=action==='decide'?e.submitter?.value||'decide':action;
    const data={p_item:f.dataset.id,p_action:op};
