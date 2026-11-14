@@ -7,7 +7,24 @@ body{font-family:Inter,system-ui,sans-serif;background:#f4f6fa}header{padding:24
 :root{--sidebar:#352c2b;--accent:#10776b;--line:#e4e9ec}
 body{color:#263c48;background:#f6f8fa}header{background:var(--sidebar);border:0}button{background:var(--accent);border-color:var(--accent);font-weight:650}nav{background:#e8eeed}nav button[aria-current=page]{background:white;color:#0c645a;border-bottom-color:#168d7d}
 .workspace{background:transparent;border:0;border-radius:0;margin:0;padding:0}.status{display:inline-block;padding:5px 11px;border-radius:99px;background:#e8edf1;font-size:13px}.status-checking{background:#e2eef8;color:#235477}.status-pending_approval{background:#fff0d0;color:#764d12}.status-destined{background:#daf0e9;color:#125a4d}
-body:not(.signed-in) main{max-width:460px}
+
+body:not(.signed-in) header{display:none}
+body:not(.signed-in) main{max-width:none;min-height:100vh;min-height:100dvh;display:grid;align-content:center;justify-items:center;gap:12px;padding:24px;background:radial-gradient(circle at 15% 10%,#f8edd9 0,transparent 38%),#f6f8fa}
+body:not(.signed-in) #app,body:not(.signed-in) #notice{width:min(100%,420px)}
+body:not(.signed-in) #notice:not(:empty){order:1;color:#a73c35;padding:0;background:transparent}
+.auth-card{margin:0;padding:clamp(22px,7vw,34px);border:1px solid #eadfd5;border-radius:14px;box-shadow:0 18px 50px #4f382014;animation:auth-entry .28s ease-out both}
+.auth-brand{display:flex;align-items:center;gap:10px;color:#49372f;font-weight:750;font-size:18px;letter-spacing:-.4px}
+.auth-brand img{width:34px;height:34px;border-radius:8px}
+.auth-brand span span{color:#80572b}
+.auth-card h1{margin:28px 0 22px;color:#263c48;font-size:25px;letter-spacing:-.6px}
+.auth-card label{margin:14px 0;color:#566671;font-size:13px;font-weight:650}
+.auth-card input{min-height:44px;border:1px solid #dfe5e7;border-radius:6px;color:#263c48;font-size:16px;font-weight:400}
+.auth-card input:focus{border-color:#bd8069;outline:3px solid #a95c4629;outline-offset:0}
+.auth-card button{width:100%;margin-top:8px;border:0;border-radius:6px;background:#a95c46;transition:background-color .16s ease,transform .16s ease}
+.auth-card button:hover{background:#914a39}.auth-card button:active{transform:translateY(1px)}.auth-card button:disabled{cursor:wait}
+@keyframes auth-entry{from{opacity:0;transform:translateY(8px)}to{opacity:1;transform:translateY(0)}}
+@media(prefers-reduced-motion:reduce){.auth-card{animation:none}.auth-card button{transition:none}}
+
 @media(min-width:900px){
 .signed-in header{position:fixed;z-index:2;inset:0 auto auto 0;width:235px;padding:25px 20px;font-size:18px}
 .signed-in main{max-width:none;margin:0 0 0 235px;padding:0}
@@ -61,7 +78,7 @@ async function load(){
 }
 function options(entries){return entries.map(([value,label])=>'<option value="'+safe(value)+'">'+safe(label)+'</option>').join('');}
 function login(){
- app.innerHTML='<form data-action="login"><h2>Entrar</h2><label>E-mail<input type="email" name="email" required autocomplete="username"></label><label>Senha<input type="password" name="password" required autocomplete="current-password"></label><button>Entrar</button></form>';
+ app.innerHTML='<form class="auth-card" data-action="login" aria-labelledby="auth-heading"><div class="auth-brand"><img src="./icon-192.png" alt=""><span>Correios <span>· Destinação</span></span></div><h1 id="auth-heading">Entrar</h1><label>E-mail<input type="email" name="email" required autocomplete="username"></label><label>Senha<input type="password" name="password" required autocomplete="current-password"></label><button>Entrar</button></form>';
 }
 function card(item,list){
  const editable=['received','checking'].includes(item.state);
