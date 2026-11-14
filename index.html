@@ -1,0 +1,149 @@
+<!doctype html>
+<html lang="pt-BR"><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
+<link rel="manifest" href="./manifest.webmanifest"><link rel="apple-touch-icon" href="./icon-192.png"><meta name="theme-color" content="#132d4b"><title>Correios · Destinação</title>
+<style>
+*{box-sizing:border-box}body{margin:0;background:#f2f5f8;color:#132d4b;font:16px system-ui}header{background:#132d4b;color:white;padding:20px 6%;font-weight:700;font-size:22px;border-bottom:4px solid #f2c94c}main{max-width:940px;margin:auto;padding:24px}section,article,form{background:white;border:1px solid #dce4ed;border-radius:12px;padding:18px;margin:12px 0}label{display:grid;gap:5px;margin:8px 0}input,button,select,textarea{font:inherit;padding:10px;border:1px solid #9aacc0;border-radius:7px;max-width:100%}button{background:#193c60;color:white;cursor:pointer;min-height:44px}button:disabled{opacity:.55}nav{display:flex;flex-wrap:wrap;gap:8px}small{color:#465970}#notice{white-space:pre-wrap;color:#78350f}h2{margin-top:0}summary{cursor:pointer}textarea{min-height:70px}nav button[aria-current=page]{background:#f2c94c;color:#132d4b}button:focus-visible,input:focus-visible,select:focus-visible,textarea:focus-visible{outline:3px solid #976e00;outline-offset:3px}@media(max-width:540px){main{padding:14px}section,article,form{padding:14px}nav button{flex:1}input,select,textarea{width:100%}}
+</style>
+<header>Correios · Destinação</header>
+<main><div id="notice" role="status"></div><div id="app"></div></main>
+<script type="module">
+const base='https://zekueiottiambayhnhmh.supabase.co';
+const app=document.querySelector('#app'),notice=document.querySelector('#notice');
+const key='sb_publishable_LXsDjcL3FpHwnsfddkY8xA_J2K3kDUo';
+let session=null,units=[],members=[],lists=[],items=[],events=[],selected='',page='lists',busy=false;
+const stateNames={received:'Recebido',checking:'Em conferência',pending_approval:'Aguardando aprovação',destined:'Destinado'};
+const destinations={supplier_return:'Devolver ao fornecedor',warranty:'Encaminhar para garantia',disposal:'Descartar',stock_referral:'Encaminhar ao estoque'};
+const unitName=u=>u==='box'?'caixas':'peças';
+const safe=v=>String(v??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'})[c]);
+async function api(path,{method='GET',data,anonymous=false,representation=false}={}){
+ const headers={apikey:key,'Content-Type':'application/json'};
+ if(session&&!anonymous)headers.Authorization='Bearer '+session.access_token;
+ if(representation)headers.Prefer='return=representation';
+ const response=await fetch(base+path,{method,headers,body:data===undefined?undefined:JSON.stringify(data)});
+ const raw=await response.text();
+ let value=null;
+ if(raw){try{value=JSON.parse(raw)}catch{throw Error('Resposta inesperada do Supabase.');}}
+ if(!response.ok){
+  if(response.status===401&&!anonymous){session=null;render();throw Error('Sessão expirada. Entre novamente.');}
+  throw Error(value?.message||value?.msg||'Operação indisponível ('+response.status+').');
+ }
+ return value;
+}
+const table=(name,query='')=>api('/rest/v1/correios_'+name+'?'+query);
+const roleFor=unit=>members.find(m=>m.unit_id===unit)?.role;
+const nameFor=unit=>units.find(u=>u.id===unit)?.name||'';
+async function load(){
+ const result=await Promise.all([
+  table('units','select=id,name,code&order=name'),table('memberships','select=unit_id,role&active=eq.true'),
+  table('lists','select=*&order=created_at.desc'),table('items','select=*&order=line_number'),
+  table('item_events','select=*&order=created_at')
+ ]);
+ [units,members,lists,items,events]=result;
+ if(!lists.some(l=>l.id===selected))selected=lists[0]?.id||'';
+ render();
+}
+function options(entries){return entries.map(([value,label])=>'<option value="'+safe(value)+'">'+safe(label)+'</option>').join('');}
+function login(){
+ app.innerHTML='<form data-action="login"><h2>Entrar</h2><label>E-mail<input type="email" name="email" required autocomplete="username"></label><label>Senha<input type="password" name="password" required autocomplete="current-password"></label><button>Entrar</button></form>';
+}
+function card(item,list){
+ const role=roleFor(list.unit_id),editable=['received','checking'].includes(item.state);
+ const history=events.filter(e=>e.item_id===item.id);
+ const last=history.filter(e=>e.action==='check').at(-1);
+ const label=unitName(item.unit_type);
+ let controls='';
+ if(page==='check'&&role==='operator'&&editable){
+  controls='<form data-action="check" data-id="'+safe(item.id)+'"><label>Código identificado<input name="code" value="'+safe(last?.details.code||item.received_code)+'"></label><label>Quantidade conferida<input name="quantity" type="number" min="0" max="2147483647" step="1" value="'+safe(item.checked_quantity)+'" required></label><label>Observação<textarea name="note">'+safe(last?.details.note)+'</textarea></label><button>Salvar conferência</button></form>';
+  if(item.checked_quantity!==null)controls+='<form data-action="submit" data-id="'+safe(item.id)+'"><button>Enviar para aprovação</button></form>';
+ }
+ if(page==='decide'&&role==='approver'&&item.state==='pending_approval'){
+  controls='<form data-action="decide" data-id="'+safe(item.id)+'"><label>Destinação<select name="destination">'+options(Object.entries(destinations))+'</select></label><label class="region" hidden>Região<select name="location"></select></label><label>Justificativa<textarea name="note" required></textarea></label><button value="decide">Confirmar destinação</button> <button value="reopen">Devolver à conferência</button></form>';
+ }
+ return '<article><small>'+safe(list.external_reference)+' · '+safe(nameFor(list.unit_id))+'</small><h2>'+safe(item.received_code)+'</h2><p><strong>'+safe(stateNames[item.state])+'</strong></p><p>Esperado: '+item.expected_quantity+' '+label+' · Conferido: '+safe(item.checked_quantity??'—')+'</p>'+(last?.details.note?'<p>'+safe(last.details.note)+'</p>':'')+(item.destination?'<p>'+safe(destinations[item.destination])+'</p>':'')+controls+'<details><summary>Histórico</summary><ul>'+history.map(e=>'<li>'+safe(new Date(e.created_at).toLocaleString('pt-BR'))+' · '+safe(stateNames[e.after_state])+(e.details.note?' · '+safe(e.details.note):'')+'</li>').join('')+'</ul></details></article>';
+}
+function render(){
+ if(!session){login();return}
+ const list=lists.find(l=>l.id===selected);
+ const own=units.filter(u=>roleFor(u.id)==='operator');
+ let content='';
+ if(page==='lists'){
+  content=lists.map(l=>'<article><small>'+safe(nameFor(l.unit_id))+'</small><h2>'+safe(l.external_reference)+'</h2><p>'+safe(l.source)+'</p><button data-open="'+safe(l.id)+'">Abrir conferência</button></article>').join('')||'<p>Nenhuma lista visível nesta conta.</p>';
+  if(own.length)content+='<form data-action="list"><h2>Nova lista</h2><label>Unidade<select name="unit">'+options(own.map(u=>[u.id,u.name]))+'</select></label><label>Origem<input name="source" required></label><label>Referência<input name="reference" required></label><button>Criar lista</button></form>';
+ }else if(page==='check'){
+  if(!list)content='<p>Escolha uma lista para conferir.</p>';
+  else{
+   content='<h2>'+safe(list.external_reference)+'</h2>'+items.filter(i=>i.list_id===list.id).map(i=>card(i,list)).join('');
+   if(roleFor(list.unit_id)==='operator')content+='<form data-action="item"><h2>Adicionar item</h2><label>Número da linha<input name="line" type="number" min="1" step="1" required></label><label>Código recebido<input name="code" required></label><label>Quantidade esperada<input name="quantity" type="number" min="1" step="1" required></label><label>Unidade<select name="unit"><option value="box">Caixas</option><option value="piece">Peças</option></select></label><button>Adicionar</button></form>';
+  }
+ }else{
+  content=items.filter(i=>['pending_approval','destined'].includes(i.state)).map(i=>{const l=lists.find(x=>x.id===i.list_id);return l?card(i,l):''}).join('')||'<p>Nenhum item aguardando decisão ou destinado.</p>';
+ }
+ app.innerHTML='<p>'+safe(session.user.email)+' · '+safe(units.map(u=>u.name+' ('+(roleFor(u.id)==='operator'?'operador':'aprovador')+')').join(', '))+'</p><nav aria-label="Etapas"><button data-page="lists">Listas</button><button data-page="check">Conferência</button><button data-page="decide">Destinação</button><button data-page="logout">Sair</button></nav>'+content;
+ app.querySelector('button[data-page='+page+']')?.setAttribute('aria-current','page');
+}
+app.addEventListener('click',e=>{
+ const {page:next,open}=e.target.dataset;
+ if(busy)return;
+ if(next==='logout'){session=null;units=[];members=[];lists=[];items=[];events=[];selected='';page='lists';notice.textContent='';render();return}
+ if(open){selected=open;page='check';render()}
+ else if(next){page=next;render()}
+});
+app.addEventListener('change',async e=>{
+ if(e.target.name!=='destination')return;
+ const label=e.target.form.querySelector('.region'),select=label.querySelector('select');
+ label.hidden=e.target.value!=='stock_referral';
+ if(label.hidden)return;
+ select.innerHTML='<option value="">Carregando</option>';
+ try{
+  const item=items.find(i=>i.id===e.target.form.dataset.id);
+  const list=lists.find(l=>l.id===item.list_id);
+  const rows=await api('/rest/v1/rpc/correios_stock_locations',{method:'POST',data:{p_unit_id:list.unit_id}});
+  select.innerHTML='<option value="">Selecione</option>'+options(rows.map(r=>[r.id,r.code]));
+ }catch(error){select.innerHTML='<option value="">Indisponível</option>';notice.textContent=error.message;}
+});
+app.addEventListener('submit',async e=>{
+ e.preventDefault();
+ if(busy)return;
+ busy=true;
+ const f=e.target,d=new FormData(f),buttons=[...app.querySelectorAll('button')],action=f.dataset.action;
+ const value=k=>String(d.get(k)??'').trim();
+ notice.textContent='';
+ for(const button of buttons)button.disabled=true;
+ try{
+  if(action==='login'){
+   session=await api('/auth/v1/token?grant_type=password',{anonymous:true,method:'POST',data:{email:value('email'),password:d.get('password')}});
+   try{await load()}catch(error){session=null;render();throw error}
+   return;
+  }
+  if(action==='list'){
+   const rows=await api('/rest/v1/correios_lists',{method:'POST',representation:true,data:{unit_id:value('unit'),source:value('source'),external_reference:value('reference')}});
+   selected=rows[0].id;page='check';
+  }else if(action==='item'){
+   await api('/rest/v1/correios_items',{method:'POST',data:{list_id:selected,line_number:Number(value('line')),received_code:value('code').toUpperCase(),expected_quantity:Number(value('quantity')),unit_type:value('unit')}});
+  }else{
+   const op=action==='decide'?e.submitter?.value||'decide':action;
+   const data={p_item:f.dataset.id,p_action:op};
+   if(op==='check')Object.assign(data,{p_quantity:Number(value('quantity')),p_code:value('code')||null,p_note:value('note')||null});
+   if(op==='reopen')data.p_note=value('note');
+   if(op==='decide'){
+    Object.assign(data,{p_destination:value('destination'),p_note:value('note')});
+    if(data.p_destination==='stock_referral'){
+     if(!value('location'))throw Error('Selecione a região de estoque.');
+     data.p_location=value('location');
+    }
+   }
+   const signature=JSON.stringify(data);
+   if(f.dataset.signature!==signature){f.dataset.signature=signature;f.dataset.request=crypto.randomUUID();}
+   data.p_request=f.dataset.request;
+   await api('/rest/v1/rpc/correios_apply_action',{method:'POST',data});
+  }
+  await load();
+  notice.textContent='Registro salvo.';
+ }catch(error){notice.textContent=error.message;}
+ finally{busy=false;for(const button of buttons)button.disabled=false;}
+});
+render();
+if ('serviceWorker' in navigator) {
+ navigator.serviceWorker.register('./sw.js').catch(error => console.warn('Instalação indisponível:', error));
+}
+</script></html>
