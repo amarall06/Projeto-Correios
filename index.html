@@ -35,7 +35,7 @@ body:not(.signed-in) #notice:not(:empty){order:1;color:#a73c35;padding:0;backgro
 .workspace{max-width:1440px;margin:auto;padding:34px 36px 56px}.screen-title{font-size:36px;margin-bottom:24px}
 .workspace article{padding:22px 24px;border-color:var(--line)}.workspace form{max-width:620px}#notice:not(:empty){padding:12px 36px;background:#fff0d0}
 }
-</style>
+.queue-filters,.quantities{display:flex;flex-wrap:wrap;gap:12px;margin:12px 0 18px}.queue-filters{align-items:end;background:white;border:1px solid var(--line);border-radius:12px;padding:12px 18px}.queue-filters label{flex:1 1 165px;margin:0}.queue-filters p{margin:0;padding:10px 0;font-weight:650}.quantities>div{flex:1 1 120px;padding:10px 12px;background:#f6f8fa;border-radius:8px}.quantities dt{font-size:13px;color:#526570}.quantities dd{margin:4px 0 0;font-weight:700}.difference{color:#943e29}.secondary{background:white;color:#10776b;margin-top:12px}</style>
 <header>Correios · Destinação</header>
 <main><div id="notice" role="status"></div><div id="app"></div></main>
 <script type="module">
@@ -43,6 +43,7 @@ const base='https://zekueiottiambayhnhmh.supabase.co';
 const app=document.querySelector('#app'),notice=document.querySelector('#notice');
 const key='sb_publishable_LXsDjcL3FpHwnsfddkY8xA_J2K3kDUo';
 let session=null,units=[],members=[],lists=[],items=[],events=[],selected='',page='lists',busy=false;
+let queueUnit='',queueState='pending_approval';
 const stateNames={received:'Recebido',checking:'Em conferência',pending_approval:'Aguardando aprovação',destined:'Destinado'};
 const destinations={supplier_return:'Devolver ao fornecedor',warranty:'Encaminhar para garantia',disposal:'Descartar',stock_referral:'Encaminhar ao estoque'};
 const unitName=u=>u==='box'?'caixas':'peças';
@@ -85,6 +86,9 @@ function card(item,list){
  const history=events.filter(e=>e.item_id===item.id);
  const last=history.filter(e=>e.action==='check').at(-1);
  const label=unitName(item.unit_type);
+ const delta=item.checked_quantity===null?null:item.checked_quantity-item.expected_quantity;
+ const countLabel=n=>Math.abs(n)===1?(item.unit_type==='box'?'caixa':'peça'):label;
+ const quantities='<dl class="quantities"><div><dt>Esperado</dt><dd>'+safe(item.expected_quantity)+' '+label+'</dd></div><div><dt>Conferido</dt><dd>'+safe(item.checked_quantity===null?'—':item.checked_quantity+' '+label)+'</dd></div><div><dt>Diferença</dt><dd class="'+(delta?'difference':'')+'">'+(delta===null?'—':delta===0?'Sem diferença':(delta<0?'Falta: ':'Excedente: ')+Math.abs(delta)+' '+countLabel(delta))+'</dd></div></dl>';
  let controls='';
  if(page==='check'&&can(list.unit_id,'operator')&&editable){
   controls='<form data-action="check" data-id="'+safe(item.id)+'"><label>Código identificado<input name="code" value="'+safe(last?.details.code||item.received_code)+'"></label><label>Quantidade conferida<input name="quantity" type="number" min="0" max="2147483647" step="1" value="'+safe(item.checked_quantity)+'" required></label><label>Observação<textarea name="note">'+safe(last?.details.note)+'</textarea></label><button>Salvar conferência</button></form>';
@@ -93,7 +97,7 @@ function card(item,list){
  if(page==='decide'&&can(list.unit_id,'approver')&&item.state==='pending_approval'){
   controls='<form data-action="decide" data-id="'+safe(item.id)+'"><label>Destinação<select name="destination">'+options(Object.entries(destinations))+'</select></label><label class="region" hidden>Região<select name="location"></select></label><label>Justificativa<textarea name="note" required></textarea></label><button value="decide">Confirmar destinação</button> <button value="reopen">Devolver à conferência</button></form>';
  }
- return '<article><small>'+safe(list.external_reference)+' · '+safe(nameFor(list.unit_id))+'</small><h2>'+safe(item.received_code)+'</h2><p><strong class="status status-'+safe(item.state)+'">'+safe(stateNames[item.state])+'</strong></p><p>Esperado: '+item.expected_quantity+' '+label+' · Conferido: '+safe(item.checked_quantity??'—')+'</p>'+(last?.details.note?'<p>'+safe(last.details.note)+'</p>':'')+(item.destination?'<p>'+safe(destinations[item.destination])+'</p>':'')+controls+'<details><summary>Histórico</summary><ul>'+history.map(e=>'<li>'+safe(new Date(e.created_at).toLocaleString('pt-BR'))+' · '+safe(stateNames[e.after_state])+(e.details.note?' · '+safe(e.details.note):'')+'</li>').join('')+'</ul></details></article>';
+ return '<article><small>'+safe(list.external_reference)+' · '+safe(nameFor(list.unit_id))+'</small><h2>'+safe(item.received_code)+'</h2><p><strong class="status status-'+safe(item.state)+'">'+safe(stateNames[item.state])+'</strong></p>'+quantities+''+(last?.details.note?'<p>'+safe(last.details.note)+'</p>':'')+(item.destination?'<p>'+safe(destinations[item.destination])+'</p>':'')+controls+'<details><summary>Histórico</summary><ul>'+history.map(e=>'<li>'+safe(new Date(e.created_at).toLocaleString('pt-BR'))+' · '+safe(stateNames[e.after_state])+(e.details.note?' · '+safe(e.details.note):'')+'</li>').join('')+'</ul></details>'+(page==='decide'?'<button type="button" class="secondary" data-open="'+safe(list.id)+'">Abrir lista de origem</button>':'')+'</article>';
 }
 function render(){
  document.body.classList.toggle('signed-in',!!session);
@@ -111,19 +115,32 @@ function render(){
    if(can(list.unit_id,'operator'))content+='<form data-action="item"><h2>Adicionar item</h2><label>Número da linha<input name="line" type="number" min="1" step="1" required></label><label>Código recebido<input name="code" required></label><label>Quantidade esperada<input name="quantity" type="number" min="1" step="1" required></label><label>Unidade<select name="unit"><option value="box">Caixas</option><option value="piece">Peças</option></select></label><button>Adicionar</button></form>';
   }
  }else{
-  content=items.filter(i=>['pending_approval','destined'].includes(i.state)).map(i=>{const l=lists.find(x=>x.id===i.list_id);return l?card(i,l):''}).join('')||'<p>Nenhum item aguardando decisão ou destinado.</p>';
+  const visible=items.flatMap(item=>{
+   const list=lists.find(l=>l.id===item.list_id);
+   return list&&item.state===queueState&&(!queueUnit||list.unit_id===queueUnit)?[{item,list}]:[];
+  });
+  content='<div class="queue-filters"><label>Unidade<select data-filter="unit">'+options([['','Todas as unidades'],...units.map(u=>[u.id,u.name])])+'</select></label><label>Situação<select data-filter="state">'+options([['pending_approval','Aguardando aprovação'],['destined','Destinados']])+'</select></label><p role="status">'+visible.length+(visible.length===1?' item':' itens')+'</p></div>'+(visible.map(({item,list})=>card(item,list)).join('')||'<p class="empty">Nenhum item para os filtros selecionados.</p>');
  }
  app.innerHTML='<div class="account"><div>'+safe(session.user.email)+'<small>'+safe(units.map(u=>u.name+' ('+(roleLabels[roleFor(u.id)]||'sem papel ativo')+')').join(', ')||'Sem unidade vinculada')+'</small></div><button data-page="logout">Sair</button></div><nav aria-label="Etapas"><button data-page="lists">Listas</button><button data-page="check">Conferência</button><button data-page="decide">Destinação</button></nav><section class="workspace"><h1 class="screen-title">'+({lists:'Listas',check:'Conferência',decide:'Destinação'})[page]+'</h1>'+content+'</section>';
  app.querySelector('button[data-page='+page+']')?.setAttribute('aria-current','page');
+ if(page==='decide'){app.querySelector('[data-filter=unit]').value=queueUnit;app.querySelector('[data-filter=state]').value=queueState;}
 }
 app.addEventListener('click',e=>{
  const {page:next,open}=e.target.dataset;
  if(busy)return;
- if(next==='logout'){session=null;units=[];members=[];lists=[];items=[];events=[];selected='';page='lists';notice.textContent='';render();return}
+ if(next==='logout'){queueUnit='';queueState='pending_approval';session=null;units=[];members=[];lists=[];items=[];events=[];selected='';page='lists';notice.textContent='';render();return}
  if(open){selected=open;page='check';render()}
  else if(next){page=next;render()}
 });
 app.addEventListener('change',async e=>{
+ const filter=e.target.dataset.filter;
+ if(filter){
+  if(filter==='unit')queueUnit=e.target.value;
+  else queueState=e.target.value;
+  render();
+  app.querySelector('[data-filter='+filter+']')?.focus();
+  return;
+ }
  if(e.target.name!=='destination')return;
  const label=e.target.form.querySelector('.region'),select=label.querySelector('select');
  label.hidden=e.target.value!=='stock_referral';
