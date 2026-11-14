@@ -113,7 +113,6 @@ function card(item,list){
  let controls='';
  if(page==='check'&&can(list.unit_id,'operator')&&editable){
   controls='<form data-action="check" data-id="'+safe(item.id)+'"><label>Código do produto conferido<input name="code" value="'+safe(last?.details.code||item.received_code)+'"></label><label>Quantidade conferida<input name="quantity" type="number" min="0" max="2147483647" step="1" value="'+safe(item.checked_quantity)+'" required></label><label>Observação<textarea name="note">'+safe(last?.details.note)+'</textarea></label><button>Salvar conferência</button></form>';
-  if(item.checked_quantity!==null)controls+='<form data-action="submit" data-id="'+safe(item.id)+'"><button>Enviar para aprovação</button></form>';
  }
  if(page==='decide'&&can(list.unit_id,'approver')&&item.state==='pending_approval'){
   controls='<form data-action="decide" data-id="'+safe(item.id)+'"><label>Destinação<select name="destination">'+options(Object.entries(destinations))+'</select></label><label class="region" hidden>Região<select name="location"></select></label><label>Motivo da decisão<textarea name="note" required></textarea></label><div class="decision-actions"><button value="decide">Confirmar destinação</button><button value="reopen" class="decision-secondary">Pedir nova conferência</button></div></form>';
@@ -354,13 +353,25 @@ app.addEventListener('submit',async e=>{
     }
    }
    const signature=JSON.stringify(data);
-   if(f.dataset.signature!==signature){f.dataset.signature=signature;f.dataset.request=crypto.randomUUID();}
+   if(f.dataset.signature!==signature){f.dataset.signature=signature;f.dataset.request=crypto.randomUUID();delete f.dataset.submitRequest;}
    data.p_request=f.dataset.request;
-   await api('/rest/v1/rpc/correios_apply_action',{method:'POST',data});
+   if(op==='check'){
+    f.dataset.submitRequest??=crypto.randomUUID();
+    await api('/rest/v1/rpc/correios_check_and_submit',{method:'POST',data:{p_item:data.p_item,p_request:data.p_request,p_submit_request:f.dataset.submitRequest,p_quantity:data.p_quantity,p_code:data.p_code,p_note:data.p_note}});
+    if(can(lists.find(l=>l.id===selected)?.unit_id,'approver')){
+     page='decide';listScope=selected;queueState='pending_approval';queueUnit='';queueSearch='';
+    }
+   }else{
+    await api('/rest/v1/rpc/correios_apply_action',{method:'POST',data});
+    if(op==='decide'){queueState='destined';queueSearch='';}
+    if(op==='reopen'&&can(lists.find(l=>l.id===items.find(i=>i.id===data.p_item)?.list_id)?.unit_id,'operator')){
+     selected=items.find(i=>i.id===data.p_item).list_id;page='check';checkOnly=true;showAllItems=true;
+    }
+   }
   }
   if(page==='check'||page==='decide')openItem=f.dataset.id||'';
   await load();
-  notice.textContent='Registro salvo.';
+  notice.textContent=action==='check'?'Conferência salva e enviada para aprovação.':'Registro salvo.';
  }catch(error){notice.textContent=error.message;}
  finally{busy=false;for(const button of buttons)button.disabled=false;}
 });
