@@ -83,7 +83,7 @@ async function load(){
 }
 function options(entries){return entries.map(([value,label])=>'<option value="'+safe(value)+'">'+safe(label)+'</option>').join('');}
 function login(){
- app.innerHTML='<form class="auth-card" data-action="login" aria-labelledby="auth-heading"><div class="auth-brand"><img src="./icon-192.png" alt=""><span>Correios <span>· Destinação</span></span></div><h1 id="auth-heading">Entrar</h1><label>E-mail<input type="email" name="email" required autocomplete="username"></label><label>Senha<input type="password" name="password" required autocomplete="current-password"></label><button>Entrar</button></form>';
+ app.innerHTML='<form class="auth-card" data-action="login" aria-labelledby="auth-heading"><div class="auth-brand"><img src="./icon-192.png" alt=""><span>Correios <span>· Destinação</span></span></div><h1 id="auth-heading">Entrar</h1><label>Usuário ou e-mail<input type="text" name="email" autocapitalize="none" required autocomplete="username"></label><label>Senha<input type="password" name="password" required autocomplete="current-password"></label><button>Entrar</button></form>';
 }
 function card(item,list){
  const editable=['received','checking'].includes(item.state);
@@ -127,7 +127,7 @@ function render(){
  document.body.classList.toggle('signed-in',!!session);
  if(!session){login();return}
  const list=lists.find(l=>l.id===selected);
- const own=units.filter(u=>can(u.id,'operator'));
+ const own=units.filter(u=>can(u.id,'approver'));
  let content='';
  if(page==='lists'){
   const progress=listProgress();
@@ -139,7 +139,7 @@ function render(){
   if(lists.length>3)content+='<div class="list-more"><button type="button" class="secondary" data-toggle-lists aria-expanded="'+showAllLists+'">'+(showAllLists?'Mostrar recentes':'Ver todas as listas ('+lists.length+')')+'</button></div>';
   if(own.length)content='<details class="new-list-top"><summary>Nova lista</summary>'+'<form data-action="list"><label>Unidade<select name="unit">'+options(own.map(u=>[u.id,u.name]))+'</select></label><label>Origem<input name="source" required></label><label>Referência<input name="reference" required></label><button>Criar lista</button></form>'+'</details>'+content;
  }else if(page==='team'){
-  content=teamManager?'<form data-action="team"><p>Crie a conta no <a href="https://supabase.com/dashboard/project/zekueiottiambayhnhmh/auth/users">Supabase do Correios</a> antes de vincular o acesso.</p><label>E-mail da pessoa<input type="email" name="email" required></label><label>Unidade<select name="unit" required>'+options(teamUnits.map(u=>[u.id,u.name]))+'</select></label><label>Papel<select name="role" required>'+options([['operator','Operador'],['approver','Aprovador']])+'</select></label><button>Salvar vínculo</button></form>':'<p class="empty">Acesso restrito à gestão da equipe.</p>';
+  content=teamManager?'<form data-action="team-create"><h2>Criar conta</h2><label>Usuário<input name="username" minlength="3" maxlength="32" pattern="[a-z0-9][a-z0-9_\\-]{2,31}" autocapitalize="none" required></label><label>Senha inicial<input name="password" type="password" minlength="12" maxlength="72" autocomplete="new-password" required></label><label>Unidade<select name="unit" required>'+options(teamUnits.map(u=>[u.id,u.name]))+'</select></label><label>Papel<select name="role"><option value="operator">Operador</option><option value="approver">Aprovador</option></select></label><button>Criar conta</button></form><form data-action="team"><p>Crie a conta no <a href="https://supabase.com/dashboard/project/zekueiottiambayhnhmh/auth/users">Supabase do Correios</a> antes de vincular o acesso.</p><label>E-mail da pessoa<input type="email" name="email" required></label><label>Unidade<select name="unit" required>'+options(teamUnits.map(u=>[u.id,u.name]))+'</select></label><label>Papel<select name="role" required>'+options([['operator','Operador'],['approver','Aprovador']])+'</select></label><button>Salvar vínculo</button></form>':'<p class="empty">Acesso restrito à gestão da equipe.</p>';
  }else if(page==='check'){
   if(!list)content='<p>Escolha uma lista para conferir.</p>';
   else{
@@ -202,9 +202,13 @@ app.addEventListener('submit',async e=>{
  for(const button of buttons)button.disabled=true;
  try{
   if(action==='login'){
-   session=await api('/auth/v1/token?grant_type=password',{anonymous:true,method:'POST',data:{email:value('email'),password:d.get('password')}});
+   session=await api('/auth/v1/token?grant_type=password',{anonymous:true,method:'POST',data:{email:value('email').includes('@')?value('email'):value('email').toLowerCase()+'@usuarios.correios.invalid',password:d.get('password')}});
    try{teamManager=await api('/rest/v1/rpc/correios_can_manage_team',{method:'POST',data:{}});if(teamManager)teamUnits=await api('/rest/v1/rpc/correios_team_units',{method:'POST',data:{}});await load()}catch(error){session=null;render();throw error}
    return;
+  }
+  if(action==='team-create'){
+   const result=await api('/functions/v1/correios-create-account',{method:'POST',data:{username:value('username').toLowerCase(),password:d.get('password'),unit:value('unit'),role:value('role')}});
+   f.reset();notice.textContent=result.message;return;
   }
   if(action==='team'){
    await api('/rest/v1/rpc/correios_assign_team_member',{method:'POST',data:{p_email:value('email'),p_unit:value('unit'),p_role:value('role')}});
