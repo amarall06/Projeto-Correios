@@ -52,6 +52,7 @@ const stateNames={received:'Recebido',checking:'Em conferência',pending_approva
 const destinations={supplier_return:'Devolver ao fornecedor',warranty:'Encaminhar para garantia',disposal:'Descartar',stock_referral:'Encaminhar ao estoque'};
 const unitName=u=>u==='box'?'caixas':'peças';
 const safe=v=>String(v??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'})[c]);
+const loginEmail=identifier=>identifier.includes('@')?identifier:identifier.toLowerCase()+'@usuarios.correios.invalid';
 async function api(path,{method='GET',data,anonymous=false,representation=false}={}){
  const headers={apikey:key,'Content-Type':'application/json'};
  if(session&&!anonymous)headers.Authorization='Bearer '+session.access_token;
@@ -139,7 +140,7 @@ function render(){
   if(lists.length>3)content+='<div class="list-more"><button type="button" class="secondary" data-toggle-lists aria-expanded="'+showAllLists+'">'+(showAllLists?'Mostrar recentes':'Ver todas as listas ('+lists.length+')')+'</button></div>';
   if(own.length)content='<details class="new-list-top"><summary>Nova lista</summary>'+'<form data-action="list"><label>Unidade<select name="unit">'+options(own.map(u=>[u.id,u.name]))+'</select></label><label>Origem<input name="source" required></label><label>Referência<input name="reference" placeholder="Ex.: DEV-001" required></label><button>Criar lista</button></form>'+'</details>'+content;
  }else if(page==='team'){
-  content=teamManager?'<form data-action="team-create"><h2>Criar conta</h2><label>Usuário<input name="username" minlength="3" maxlength="32" pattern="[a-z0-9][a-z0-9_\\-]{2,31}" autocapitalize="none" required></label><label>Senha inicial<input name="password" type="password" minlength="12" maxlength="72" autocomplete="new-password" required></label><label>Unidade<select name="unit" required>'+options(teamUnits.map(u=>[u.id,u.name]))+'</select></label><label>Papel<select name="role"><option value="operator">Operador</option><option value="approver">Aprovador</option></select></label><button>Criar conta</button></form><form data-action="team"><p>Use este formulário para mudar o acesso de uma conta já cadastrada.</p><label>E-mail da pessoa<input type="email" name="email" required></label><label>Unidade<select name="unit" required>'+options(teamUnits.map(u=>[u.id,u.name]))+'</select></label><label>Papel<select name="role" required>'+options([['operator','Operador'],['approver','Aprovador']])+'</select></label><button>Salvar acesso</button></form>':'<p class="empty">Acesso restrito à gestão da equipe.</p>';
+  content=teamManager?'<form data-action="team-create"><h2>Criar conta</h2><label>Usuário<input name="username" minlength="3" maxlength="32" pattern="[a-z0-9][a-z0-9_\\-]{2,31}" autocapitalize="none" required></label><label>Senha inicial<input name="password" type="password" minlength="12" maxlength="72" autocomplete="new-password" required></label><label>Unidade<select name="unit" required>'+options(teamUnits.map(u=>[u.id,u.name]))+'</select></label><label>Papel<select name="role"><option value="operator">Operador</option><option value="approver">Aprovador</option></select></label><button>Criar conta</button></form><form data-action="team"><p>Use este formulário para mudar o acesso de uma conta já cadastrada.</p><label>Usuário ou e-mail<input type="text" name="email" autocapitalize="none" required></label><label>Unidade<select name="unit" required>'+options(teamUnits.map(u=>[u.id,u.name]))+'</select></label><label>Papel<select name="role" required>'+options([['operator','Operador'],['approver','Aprovador']])+'</select></label><button>Salvar acesso</button></form>':'<p class="empty">Acesso restrito à gestão da equipe.</p>';
  }else if(page==='check'){
   if(!list)content='<p>Escolha uma lista para conferir.</p>';
   else{
@@ -202,7 +203,7 @@ app.addEventListener('submit',async e=>{
  for(const button of buttons)button.disabled=true;
  try{
   if(action==='login'){
-   session=await api('/auth/v1/token?grant_type=password',{anonymous:true,method:'POST',data:{email:value('email').includes('@')?value('email'):value('email').toLowerCase()+'@usuarios.correios.invalid',password:d.get('password')}});
+   session=await api('/auth/v1/token?grant_type=password',{anonymous:true,method:'POST',data:{email:loginEmail(value('email')),password:d.get('password')}});
    try{teamManager=await api('/rest/v1/rpc/correios_can_manage_team',{method:'POST',data:{}});if(teamManager)teamUnits=await api('/rest/v1/rpc/correios_team_units',{method:'POST',data:{}});await load()}catch(error){session=null;render();throw error}
    return;
   }
@@ -211,7 +212,7 @@ app.addEventListener('submit',async e=>{
    f.reset();notice.textContent=result.message;return;
   }
   if(action==='team'){
-   await api('/rest/v1/rpc/correios_assign_team_member',{method:'POST',data:{p_email:value('email'),p_unit:value('unit'),p_role:value('role')}});
+   await api('/rest/v1/rpc/correios_assign_team_member',{method:'POST',data:{p_email:loginEmail(value('email')),p_unit:value('unit'),p_role:value('role')}});
    f.reset();notice.textContent='Acesso salvo.';return;
   }
   if(action==='list'){
