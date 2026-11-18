@@ -97,6 +97,8 @@ input,select,textarea{background:var(--bg);color:var(--ink);border-color:var(--l
 @media(prefers-reduced-motion:no-preference){.workspace{animation:liber-enter .18s ease-out}button{transition:background-color .18s ease,border-color .18s ease}@keyframes liber-enter{from{opacity:0;transform:translateY(4px)}to{opacity:1;transform:translateY(0)}}}
 
 .lists-layout{display:grid;grid-template-columns:minmax(0,1fr) 300px;gap:24px;align-items:start}.lists-column{min-width:0}.daily-attention{margin-top:28px;padding:20px;border:1px solid var(--line);border-radius:var(--radius);background:var(--panel)}.daily-attention h2{font-size:18px;margin:0}.daily-attention p{font-size:13px;color:var(--muted)}.daily-attention dl>div{display:flex;gap:12px;justify-content:space-between;padding:14px 0;border-bottom:1px solid var(--line)}.daily-attention dt{font-size:14px}.daily-attention dd{margin:0;color:var(--soft);font-weight:700}.daily-attention button{width:100%}@media(max-width:1199px){.lists-layout{grid-template-columns:minmax(0,1fr)}.daily-attention{margin-top:0}}
+
+.global-search{display:flex;align-items:center;gap:8px;margin:0 auto 0 0;padding:0;border:0;background:transparent;box-shadow:none;max-width:430px;flex:1}.global-search input{width:100%;min-width:0}.global-search button{background:var(--panel);color:var(--soft);border-color:var(--line)}.search-label{position:absolute;width:1px;height:1px;overflow:hidden;clip-path:inset(50%)}.connection-state,.account-name{font-size:13px;color:var(--muted)}.nav-count{margin-left:auto;min-width:22px;padding:3px 6px;border-radius:99px;background:var(--line);font-size:12px;color:var(--soft)}.list-toolbar{display:flex;justify-content:space-between;align-items:center;gap:16px;flex-wrap:wrap;margin:12px 0}.list-toolbar>div{display:flex;gap:8px;flex-wrap:wrap}.list-toolbar button{border-radius:99px;background:transparent;border-color:var(--line);color:var(--muted)}.list-toolbar button[aria-pressed=true]{border-color:var(--ink);color:var(--ink);background:var(--panel)}.list-toolbar label{display:flex;align-items:center;gap:8px;color:var(--muted);font-size:13px}.search-count{color:var(--muted);font-size:13px}@media(max-width:1100px){.account-name{display:none}}@media(max-width:650px){.account{flex-wrap:wrap;padding:16px}.global-search{flex-basis:100%;max-width:none;order:2}.connection-state{margin-right:auto}.list-toolbar label{width:100%;justify-content:space-between}}
 </style>
 <header><img src="./liber-correios.svg" width="34" height="34" alt=""> Liber Correios</header>
 <main><div id="notice" role="status"></div><div id="app"></div><datalist id="stockflow-code-suggestions"></datalist></main><dialog id="check-alert" aria-labelledby="check-alert-title" aria-describedby="check-alert-message"><h2 id="check-alert-title"></h2><p id="check-alert-message"></p><form method="dialog"><button autofocus>Entendi</button></form></dialog>
@@ -107,6 +109,7 @@ const key='sb_publishable_LXsDjcL3FpHwnsfddkY8xA_J2K3kDUo';
 let session=null,units=[],members=[],lists=[],items=[],events=[],selected='',page='lists',busy=false;
 let teamManager=false,teamUnits=[];
 let showAllLists=false,showAllItems=false;
+let listSearch='',listView='all',listPeriod='all';
 let listScope='',checkOnly=false;
 let queueSearch='';
 let queueUnit='',queueState='pending_approval';
@@ -255,7 +258,19 @@ function render(){
  let content='';
  if(page==='lists'){
   const progress=listProgress();
-  const orderedLists=[...lists].sort((a,b)=>String(b.created_at).localeCompare(String(a.created_at)));
+  const query=listSearch.normalize('NFD').replace(/[\u0300-\u036f]/g,'').toLowerCase();
+  const searchValue=value=>String(value??'').normalize('NFD').replace(/[\u0300-\u036f]/g,'').toLowerCase();
+  const matchedItems=new Set(items.filter(item=>[item.received_code,item.order_number].some(value=>searchValue(value).includes(query))).map(item=>item.list_id));
+  const today=todayBahia();
+  const cutoff=new Date(today+'T12:00:00Z');cutoff.setUTCDate(cutoff.getUTCDate()-6);
+  const firstDay=cutoff.toISOString().slice(0,10);
+  const filtered=lists.filter(list=>{
+   const day=new Intl.DateTimeFormat('sv-SE',{timeZone:'America/Bahia'}).format(new Date(list.created_at));
+   return (listView==='all'||(listView==='closed')===Boolean(list.closed_at))
+    &&(listPeriod==='all'||(day>=firstDay&&day<=today))
+    &&(!query||matchedItems.has(list.id)||[list.external_reference,list.source].some(value=>searchValue(value).includes(query)));
+  });
+  const orderedLists=[...filtered].sort((a,b)=>String(b.created_at).localeCompare(String(a.created_at)));
   let previousDay='';
   content=(showAllLists?orderedLists:orderedLists.slice(0,3)).map(l=>{
    const rawDay=new Intl.DateTimeFormat('sv-SE',{timeZone:'America/Bahia'}).format(new Date(l.created_at));
@@ -264,13 +279,14 @@ function render(){
    const counts=progress.get(l.id);
    const completed=Boolean(l.closed_at);
    return dayTitle+'<article'+(completed?' class="list-completed"':'')+'><small>'+safe(nameFor(l.unit_id))+'</small><h2>'+safe(l.external_reference)+'</h2><p class="item-meta"><small>Criada em '+safe(new Date(l.created_at).toLocaleString('pt-BR'))+' · '+safe(l.creator_label?.replace(/@usuarios\\.correios\\.invalid$/,'')||'Responsável não registrado')+'</small></p>'+(completed?'<p><strong class="status status-destined">Encerrada</strong></p>':'')+progressBar(l.id,counts)+listSummary(l.id,progress.get(l.id))+'<button data-open="'+safe(l.id)+'">Abrir conferência</button></article>';
-  }).join('')||'<p class="empty">'+(units.length?(own.length?'Crie a primeira lista no formulário abaixo.':'As listas da sua unidade aparecem aqui assim que forem registradas.'):'Sua conta está conectada. Peça ao responsável para vincular você a uma unidade do Correios.')+'</p>';
+  }).join('')||'<p class="empty">'+(lists.length?'Nenhuma lista encontrada para estes filtros.':units.length?(own.length?'Crie a primeira lista no formulário abaixo.':'As listas da sua unidade aparecem aqui assim que forem registradas.'):'Sua conta está conectada. Peça ao responsável para vincular você a uma unidade do Correios.')+'</p>';
+  content='<div class="list-toolbar"><div role="group" aria-label="Situação das listas">'+[['all','Todas'],['open','Em andamento'],['closed','Concluídas']].map(([value,label])=>'<button type="button" data-list-view="'+value+'" aria-pressed="'+(listView===value)+'">'+label+'</button>').join('')+'</div><label>Período<select data-list-period><option value="all">Todas as datas</option><option value="week">Últimos 7 dias</option></select></label></div><p class="search-count" role="status">'+filtered.length+(filtered.length===1?' lista encontrada':' listas encontradas')+'</p>'+content;
   const totals=[...progress.values()].reduce((sum,row)=>({check:sum.check+row.check,approval:sum.approval+row.approval,destined:sum.destined+row.destined}),{check:0,approval:0,destined:0});
   content='<dl class="overview-stats">'+[['Itens nas listas',items.length],['Faltam conferir',totals.check],['Aguardam aprovação',totals.approval],['Destinados',totals.destined]].map(([label,value])=>'<div><dt>'+label+'</dt><dd>'+value+'</dd></div>').join('')+'</dl>'+content;
   const storagePending=items.filter(item=>awaitingStorage(item)).length;
   const openIssues=items.filter(item=>item.pending_note).length;
   content=content.replace('</dl>','</dl><div class="lists-layout"><div class="lists-column">')+'</div><aside class="daily-attention"><h2>Pendências</h2><p>Dados das listas carregadas</p><dl><div><dt>Faltam conferir</dt><dd>'+totals.check+'</dd></div><div><dt>Aguardam aprovação</dt><dd>'+totals.approval+'</dd></div><div><dt>Aguardam armazenamento</dt><dd>'+storagePending+'</dd></div><div><dt>Pendências registradas</dt><dd>'+openIssues+'</dd></div></dl><button type="button" data-page="decide">Abrir destinação</button></aside></div>';
-  if(lists.length>3)content+='<div class="list-more"><button type="button" class="secondary" data-toggle-lists aria-expanded="'+showAllLists+'">'+(showAllLists?'Mostrar recentes':'Ver todas as listas ('+lists.length+')')+'</button></div>';
+  if(filtered.length>3)content+='<div class="list-more"><button type="button" class="secondary" data-toggle-lists aria-expanded="'+showAllLists+'">'+(showAllLists?'Mostrar recentes':'Ver todas as listas ('+filtered.length+')')+'</button></div>';
   if(own.length)content='<details class="new-list-top"><summary>Nova lista</summary>'+'<form data-action="list">'+(own.length===1?'<input type="hidden" name="unit" value="'+safe(own[0].id)+'">':'<label>Unidade<select name="unit">'+options(own.map(u=>[u.id,u.name]))+'</select></label>')+'<label>Data de trabalho<input type="date" name="date" value="'+todayBahia()+'" required></label><label>Tipo<select name="kind"><option value="stock">Estoque</option><option value="warranty">Garantia</option></select></label><label>Origem<input name="source" required></label><label>Nome ou número da lista<input name="reference" placeholder="Ex.: Devoluções de 14/11 ou DEV-001" required><small>Use o nome ou número da folha impressa, se tiver.</small></label><label>Arquivo Excel ou CSV<input type="file" name="importFile" accept=".xlsx,.csv"></label><label>Unidade quando ausente no arquivo<select name="defaultUnit"><option value="piece">Peças</option><option value="box">Caixas</option></select></label><div class="import-preview" aria-live="polite"></div><button>Salvar rascunho</button></form>'+'</details>'+content;
  }else if(page==='team'){
   content=teamManager?'<form data-action="team-create"><h2>Criar conta</h2><label>Usuário<input name="username" aria-describedby="username-help" minlength="3" maxlength="32" autocapitalize="none" required><small id="username-help">Ex.: maria-01. Use 3 a 32 letras de A a Z, números, hífen ou sublinhado. Comece com uma letra ou número.</small></label><label>Senha inicial (mínimo de 6 caracteres)<input name="password" type="password" minlength="6" maxlength="72" autocomplete="new-password" required></label><label>Unidade<select name="unit" required>'+options(teamUnits.map(u=>[u.id,u.name]))+'</select></label><label>Papel<select name="role"><option value="operator">Operador</option><option value="approver">Aprovador</option></select></label><button>Criar conta</button></form><form data-action="team"><p>Use este formulário para mudar o acesso de uma conta já cadastrada.</p><label>Usuário ou e-mail<input type="text" name="email" autocapitalize="none" required></label><label>Unidade<select name="unit" required>'+options(teamUnits.map(u=>[u.id,u.name]))+'</select></label><label>Papel<select name="role" required>'+options([['operator','Operador'],['approver','Aprovador']])+'</select></label><button>Salvar acesso</button></form>':'<p class="empty">Acesso restrito à gestão da equipe.</p>';
@@ -297,8 +313,13 @@ function render(){
   const scoped=lists.find(l=>l.id===listScope);
   content=(scoped?'<h2>'+safe(scoped.external_reference)+'</h2><button type="button" class="secondary" data-page="decide">Ver todas as listas</button>':'')+'<div class="queue-filters"><label>Buscar peça ou pedido<input type="search" data-filter="search" value="'+safe(queueSearch)+'" placeholder="Digite ou bipe o código ou pedido"></label><label>Unidade<select data-filter="unit">'+options([['','Todas as unidades'],...units.map(u=>[u.id,u.name])])+'</select></label><label>Situação<select data-filter="state">'+options([['pending_approval','Aguardando aprovação'],['awaiting_storage','Aguardando armazenamento'],['destined','Destinados']])+'</select></label><p role="status">'+visible.length+(visible.length===1?' item':' itens')+'</p></div>'+(visible.map(({item,list})=>expandableItem(item,list)).join('')||'<p class="empty">Nenhum item para os filtros selecionados.</p>');
  }
- app.innerHTML='<div class="account"><button type="button" class="refresh-button" data-page="refresh" aria-label="Atualizar" title="Atualizar">↻</button><details class="profile"><summary aria-label="Menu de usuário" title="Menu de usuário"><svg aria-hidden="true" width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><circle cx="12" cy="8" r="3"/><path d="M5 21v-2a7 7 0 0 1 14 0v2"/></svg></summary><div class="profile-panel"><strong>'+safe(session.user.email.replace(/@usuarios\.correios\.invalid$/,''))+'</strong><small>'+safe(units.map(u=>u.name+' ('+(roleLabels[roleFor(u.id)]||'sem papel ativo')+')').join(', ')||'Sem unidade atribuída')+'</small>'+(teamManager?'<button data-page="team">Equipe</button>':'')+'<button type="button" id="install-app"'+(installPrompt?'':' hidden')+'><svg aria-hidden="true" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 3v12m-5-5 5 5 5-5M4 16v4h16v-4"/></svg> Instalar Liber Correios</button><button data-page="logout">Sair</button></div></details></div><nav aria-label="Etapas"><button data-page="lists"><svg aria-hidden="true" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M5 4h14v16H5z M8 9h8 M8 13h8 M8 17h5"/></svg>Listas</button><button data-page="check"><svg aria-hidden="true" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M4 12l5 5L20 6"/></svg>Conferência</button><button data-page="decide"><svg aria-hidden="true" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M3 12h16 M13 6l6 6-6 6"/></svg>Destinação</button></nav><section class="workspace"><h1 class="screen-title">'+({lists:'Listas',check:'Conferência',decide:'Destinação',team:'Equipe'})[page]+'</h1>'+content+'</section>';
+ app.innerHTML='<div class="account"><form class="global-search" data-action="list-search" role="search"><label class="search-label" for="list-search">Buscar listas por código, pedido ou referência</label><input id="list-search" name="search" type="search" placeholder="Buscar por código, pedido ou referência" value="'+safe(listSearch)+'"><button type="submit" aria-label="Buscar listas">⌕</button></form><span class="connection-state" role="status">'+(navigator.onLine?'Conectado':'Offline · conexão indisponível')+'</span><span class="account-name">'+safe(session.user.email.replace(/@usuarios\.correios\.invalid$/,''))+'</span><button type="button" class="refresh-button" data-page="refresh" aria-label="Atualizar" title="Atualizar">↻</button><details class="profile"><summary aria-label="Menu de usuário" title="Menu de usuário"><svg aria-hidden="true" width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><circle cx="12" cy="8" r="3"/><path d="M5 21v-2a7 7 0 0 1 14 0v2"/></svg></summary><div class="profile-panel"><strong>'+safe(session.user.email.replace(/@usuarios\.correios\.invalid$/,''))+'</strong><small>'+safe(units.map(u=>u.name+' ('+(roleLabels[roleFor(u.id)]||'sem papel ativo')+')').join(', ')||'Sem unidade atribuída')+'</small>'+(teamManager?'<button data-page="team">Equipe</button>':'')+'<button type="button" id="install-app"'+(installPrompt?'':' hidden')+'><svg aria-hidden="true" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 3v12m-5-5 5 5 5-5M4 16v4h16v-4"/></svg> Instalar Liber Correios</button><button data-page="logout">Sair</button></div></details></div><nav aria-label="Etapas"><button data-page="lists"><svg aria-hidden="true" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M5 4h14v16H5z M8 9h8 M8 13h8 M8 17h5"/></svg>Listas</button><button data-page="check"><svg aria-hidden="true" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M4 12l5 5L20 6"/></svg>Conferência</button><button data-page="decide"><svg aria-hidden="true" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M3 12h16 M13 6l6 6-6 6"/></svg>Destinação</button></nav><section class="workspace"><h1 class="screen-title">'+({lists:'Listas',check:'Conferência',decide:'Destinação',team:'Equipe'})[page]+'</h1>'+content+'</section>';
  app.querySelector('button[data-page='+page+']')?.setAttribute('aria-current','page');
+ if(page==='lists')app.querySelector('[data-list-period]').value=listPeriod;
+ for(const [target,count] of [['lists',lists.length],['check',items.filter(item=>['received','checking'].includes(item.state)).length],['decide',items.filter(item=>item.state==='pending_approval').length]]){
+  const badge=document.createElement('span');badge.className='nav-count';badge.textContent=String(count);badge.setAttribute('aria-label',count+' registros');
+  app.querySelector('nav [data-page='+target+']')?.append(badge);
+ }
  if(page==='decide'){app.querySelector('[data-filter=unit]').value=queueUnit;app.querySelector('[data-filter=state]').value=queueState;}
 }
 async function refreshData(button){
@@ -309,13 +330,31 @@ async function refreshData(button){
  catch(error){notice.textContent=error.message;}
  finally{busy=false;button.disabled=false;}
 }
+app.addEventListener('submit',event=>{
+ if(event.target.dataset.action!=='list-search')return;
+ event.preventDefault();event.stopImmediatePropagation();
+ listSearch=String(new FormData(event.target).get('search')??'').trim();
+ showAllLists=false;page='lists';render();app.querySelector('#list-search')?.focus();
+});
+app.addEventListener('change',event=>{
+ if(!event.target.matches('[data-list-period]'))return;
+ listPeriod=event.target.value;showAllLists=false;render();app.querySelector('[data-list-period]')?.focus();
+});
+function updateConnection(){
+ const node=app.querySelector('.connection-state');
+ if(node)node.textContent=navigator.onLine?'Conectado':'Offline · conexão indisponível';
+}
+window.addEventListener('online',updateConnection);
+window.addEventListener('offline',updateConnection);
 app.addEventListener('click',e=>{
+ const filter=e.target.closest('[data-list-view]');
+ if(filter){listView=filter.dataset.listView;showAllLists=false;render();app.querySelector('[data-list-view="'+listView+'"]')?.focus();return}
  const {page:next,open,status}=e.target.closest('button')?.dataset??{};
  if(busy)return;
  if(next==='refresh'){refreshData(e.target.closest('button'));return}
  if(e.target.closest('[data-toggle-items]')){showAllItems=!showAllItems;render();app.querySelector('[data-toggle-items]')?.focus();return}
  if(e.target.closest('[data-toggle-lists]')){showAllLists=!showAllLists;render();app.querySelector('[data-toggle-lists]')?.focus();return}
- if(next==='logout'){catalogCodes=null;catalogRequest=null;document.getElementById('stockflow-code-suggestions').replaceChildren();queueSearch='';openItem='';teamManager=false;teamUnits=[];showAllItems=false;showAllLists=false;checkOnly=false;listScope='';queueUnit='';queueState='pending_approval';session=null;units=[];members=[];lists=[];items=[];events=[];selected='';page='lists';notice.textContent='';render();return}
+ if(next==='logout'){listSearch='';listView='all';listPeriod='all';catalogCodes=null;catalogRequest=null;document.getElementById('stockflow-code-suggestions').replaceChildren();queueSearch='';openItem='';teamManager=false;teamUnits=[];showAllItems=false;showAllLists=false;checkOnly=false;listScope='';queueUnit='';queueState='pending_approval';session=null;units=[];members=[];lists=[];items=[];events=[];selected='';page='lists';notice.textContent='';render();return}
  if(open){
   openItem='';
   showAllItems=false;
